@@ -6,17 +6,21 @@ import {
   ETHIOPIAN_CHANNELS,
   getOfficialEthiopianVideos,
 } from "@/lib/ethiopian-youtube";
+import { getLicensedMovies } from "@/lib/licensed-media";
 
 export const metadata: Metadata = {
   title: "Watch Ethiopian Movies — AddisMovie",
   description:
-    "Watch full Ethiopian movies through official publisher embeds on AddisMovie.",
+    "Watch licensed and publisher-authorized Ethiopian movies through the AddisMovie internal player.",
 };
 
 export const revalidate = 1800;
 
 export default async function EthiopianMoviesPage() {
-  const { configured, videos } = await getOfficialEthiopianVideos();
+  const [{ configured, videos }, licensedVideos] = await Promise.all([
+    getOfficialEthiopianVideos(),
+    Promise.resolve(getLicensedMovies()),
+  ]);
 
   return (
     <main>
@@ -24,6 +28,7 @@ export default async function EthiopianMoviesPage() {
       <EthiopianCinemaHub
         channels={ETHIOPIAN_CHANNELS}
         videos={videos}
+        licensedVideos={licensedVideos}
         apiConfigured={configured}
       />
       <Footer />
