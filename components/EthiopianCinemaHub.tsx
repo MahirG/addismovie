@@ -1,43 +1,78 @@
 "use client";
 
-import Image from "next/image";
-import { ExternalLink, Film, Play, Radio, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ExternalLink, Film, Radio, ShieldCheck } from "lucide-react";
+import { useMemo } from "react";
+import { InternalVideoPlayer } from "@/components/InternalVideoPlayer";
 import type { EthiopianChannel, EthiopianVideo } from "@/lib/ethiopian-youtube";
+import type { InternalMediaItem } from "@/lib/internal-media";
 
 type Props = {
   channels: EthiopianChannel[];
   videos: EthiopianVideo[];
+  licensedVideos: InternalMediaItem[];
   apiConfigured: boolean;
 };
 
-export function EthiopianCinemaHub({ channels, videos, apiConfigured }: Props) {
-  const initialSlug = videos[0]?.channelSlug ?? channels[0]?.slug ?? "";
-  const [activeSlug, setActiveSlug] = useState(initialSlug);
-  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(
-    videos.find((video) => video.channelSlug === initialSlug)?.videoId ?? null,
-  );
+function officialItems(
+  channels: EthiopianChannel[],
+  videos: EthiopianVideo[],
+): InternalMediaItem[] {
+  return videos.flatMap((video) => {
+    const channel = channels.find((item) => item.slug === video.channelSlug);
+    if (!channel) return [];
 
-  const activeChannel =
-    channels.find((channel) => channel.slug === activeSlug) ?? channels[0];
+    return [
+      {
+        id: `youtube:${video.videoId}`,
+        title: video.title,
+        subtitle: channel.amharicName,
+        description: video.description,
+        poster: video.thumbnail,
+        publishedAt: video.publishedAt,
+        publisher: video.channelTitle,
+        source: { kind: "youtube" as const, videoId: video.videoId },
+        rights: {
+          status: "authorized" as const,
+          rightsHolder: video.channelTitle,
+          evidenceUrl: channel.profileUrl,
+        },
+      },
+    ];
+  });
+}
 
-  const channelVideos = useMemo(
-    () => videos.filter((video) => video.channelSlug === activeChannel?.slug),
-    [activeChannel?.slug, videos],
-  );
+function channelPlaylistItems(channels: EthiopianChannel[]): InternalMediaItem[] {
+  return channels.map((channel) => ({
+    id: `youtube-playlist:${channel.slug}`,
+    title: `${channel.name} — Full Movie Playlist`,
+    subtitle: channel.amharicName,
+    description: channel.description,
+    publisher: channel.name,
+    source: {
+      kind: "youtube-playlist" as const,
+      playlistId: channel.uploadsPlaylistId,
+    },
+    rights: {
+      status: "authorized" as const,
+      rightsHolder: channel.name,
+      evidenceUrl: channel.profileUrl,
+    },
+  }));
+}
 
-  if (!activeChannel) return null;
-
-  const playerSource = selectedVideoId
-    ? `https://www.youtube-nocookie.com/embed/${selectedVideoId}?rel=0&modestbranding=1`
-    : `https://www.youtube-nocookie.com/embed/videoseries?list=${activeChannel.uploadsPlaylistId}&rel=0&modestbranding=1`;
-
-  function chooseChannel(channel: EthiopianChannel) {
-    setActiveSlug(channel.slug);
-    setSelectedVideoId(
-      videos.find((video) => video.channelSlug === channel.slug)?.videoId ?? null,
-    );
-  }
+export function EthiopianCinemaHub({
+  channels,
+  videos,
+  licensedVideos,
+  apiConfigured,
+}: Props) {
+  const items = useMemo(() => {
+    const youtubeItems = officialItems(channels, videos);
+    return [
+      ...licensedVideos,
+      ...(youtubeItems.length > 0 ? youtubeItems : channelPlaylistItems(channels)),
+    ];
+  }, [channels, licensedVideos, videos]);
 
   return (
     <div className="ethiopianHub">
@@ -46,18 +81,19 @@ export function EthiopianCinemaHub({ channels, videos, apiConfigured }: Props) {
         <div className="pageWidth ethiopianHeroInner">
           <div className="ethiopianHeroCopy">
             <span className="sourceBadge">
-              <ShieldCheck size={14} /> Official publisher embeds
+              <ShieldCheck size={14} /> Rights-checked playback
             </span>
             <span className="sectionEyebrow">AddisMovie Ethiopian cinema</span>
-            <h1>Watch stories<br />made at home.</h1>
+            <h1>One player.<br />Stories made at home.</h1>
             <p>
-              Full Ethiopian films streamed directly from approved YouTube publishers.
-              AddisMovie does not copy, re-upload or host the video files.
+              Every Ethiopian movie now plays through the AddisMovie interface. Licensed HLS
+              and MP4 titles use the native player; approved YouTube publishers use the official
+              IFrame API inside the same branded experience.
             </p>
             <div className="ethiopianHeroStats">
-              <span><Film size={16} /> Full movies</span>
-              <span><Radio size={16} /> Live channel playlists</span>
-              <span><ShieldCheck size={16} /> Publisher-owned playback</span>
+              <span><Film size={16} /> Full films only</span>
+              <span><Radio size={16} /> Automatic publisher sync</span>
+              <span><ShieldCheck size={16} /> Embedding permission checked</span>
             </div>
           </div>
           <div className="ethiopianHeroMonogram" aria-hidden="true">አማ</div>
@@ -67,129 +103,46 @@ export function EthiopianCinemaHub({ channels, videos, apiConfigured }: Props) {
       <section className="ethiopianPlayerSection pageWidth">
         <div className="ethiopianSectionHeading">
           <div>
-            <span className="sectionEyebrow">Now playing</span>
-            <h2>{activeChannel.amharicName}</h2>
-            <p>{activeChannel.description}</p>
-          </div>
-          <a
-            className="publisherLink"
-            href={activeChannel.profileUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open publisher <ExternalLink size={15} />
-          </a>
-        </div>
-
-        <div className="channelSwitcher" role="tablist" aria-label="Official Ethiopian movie publishers">
-          {channels.map((channel) => (
-            <button
-              key={channel.slug}
-              type="button"
-              role="tab"
-              aria-selected={channel.slug === activeChannel.slug}
-              className={`channelTab ${channel.slug === activeChannel.slug ? "active" : ""}`}
-              onClick={() => chooseChannel(channel)}
-            >
-              <span className="channelInitial">{channel.name.slice(0, 1)}</span>
-              <span>
-                <strong>{channel.name}</strong>
-                <small>{channel.handle}</small>
-              </span>
-            </button>
-          ))}
-        </div>
-
-        <div className="ethiopianPlayerShell">
-          <div className="ethiopianPlayerFrame">
-            <iframe
-              key={playerSource}
-              src={playerSource}
-              title={`${activeChannel.name} official Ethiopian movie player`}
-              loading="lazy"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-            />
-          </div>
-          <aside className="playerContext">
-            <span className="liveSourceLabel"><span /> Official YouTube source</span>
-            <h3>{activeChannel.name}</h3>
+            <span className="sectionEyebrow">AddisMovie internal playback</span>
+            <h2>Watch without leaving AddisMovie</h2>
             <p>
-              Playback, advertising, availability and copyright controls remain with the
-              original YouTube publisher.
+              Choose the next title from the left queue. Playback, search, fullscreen, volume,
+              and progress controls use the AddisMovie visual system.
             </p>
-            <div className="playerContextMeta">
-              <span>Privacy-enhanced player</span>
-              <span>{apiConfigured ? "Live title API enabled" : "Live playlist mode"}</span>
-            </div>
-          </aside>
+          </div>
+          <span className="publisherLink staticPublisherLabel">
+            {apiConfigured ? "Live API sync enabled" : "Official playlist fallback"}
+          </span>
         </div>
+
+        <InternalVideoPlayer items={items} />
       </section>
 
       <section className="officialTitlesSection pageWidth">
-        <div className="ethiopianSectionHeading compactHeading">
-          <div>
-            <span className="sectionEyebrow">Official catalogue</span>
-            <h2>{channelVideos.length > 0 ? "Latest full movies" : "Publisher directory"}</h2>
-            <p>
-              {channelVideos.length > 0
-                ? "Fresh titles are loaded through YouTube Data API v3 from the selected publisher."
-                : "The embedded uploads playlist remains live. Add a YouTube API key to display individual title cards."}
-            </p>
-          </div>
-        </div>
-
-        {channelVideos.length > 0 ? (
-          <div className="officialVideoGrid">
-            {channelVideos.map((video) => (
-              <button
-                type="button"
-                key={video.videoId}
-                className={`officialVideoCard ${selectedVideoId === video.videoId ? "active" : ""}`}
-                onClick={() => setSelectedVideoId(video.videoId)}
-              >
-                <span className="officialVideoThumb">
-                  <Image
-                    src={video.thumbnail}
-                    alt=""
-                    fill
-                    sizes="(max-width: 680px) 82vw, (max-width: 1100px) 42vw, 25vw"
-                  />
-                  <span className="officialVideoShade" />
-                  <span className="officialPlay"><Play size={18} fill="currentColor" /></span>
-                </span>
-                <span className="officialVideoMeta">
-                  <strong>{video.title}</strong>
-                  <small>{video.channelTitle}</small>
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="publisherDirectory">
-            {channels.map((channel) => (
-              <article key={channel.slug} className="publisherDirectoryCard">
-                <span className="publisherDirectoryMark">{channel.name.slice(0, 1)}</span>
-                <div>
-                  <strong>{channel.name}</strong>
-                  <span>{channel.amharicName}</span>
-                  <p>{channel.description}</p>
-                </div>
-                <button type="button" onClick={() => chooseChannel(channel)}>
-                  <Play size={15} fill="currentColor" /> Watch playlist
-                </button>
-              </article>
-            ))}
-          </div>
-        )}
-
         <div className="rightsNotice">
           <ShieldCheck size={18} />
           <p>
-            AddisMovie embeds content using YouTube&apos;s official player. Film ownership,
-            monetization, regional restrictions and removal controls stay with each publisher.
+            Hosted HLS/MP4 entries require documented distribution rights. YouTube entries are
+            accepted only from the approved publisher allowlist and only when YouTube reports
+            that the video is public and embeddable. YouTube may still show mandatory source
+            attribution inside its player.
           </p>
+        </div>
+
+        <div className="publisherDirectory">
+          {channels.map((channel) => (
+            <article key={channel.slug} className="publisherDirectoryCard">
+              <span className="publisherDirectoryMark">{channel.name.slice(0, 1)}</span>
+              <div>
+                <strong>{channel.name}</strong>
+                <span>{channel.amharicName}</span>
+                <p>{channel.description}</p>
+              </div>
+              <a href={channel.profileUrl} target="_blank" rel="noreferrer">
+                Publisher <ExternalLink size={14} />
+              </a>
+            </article>
+          ))}
         </div>
       </section>
     </div>
