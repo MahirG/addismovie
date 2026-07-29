@@ -9,8 +9,9 @@ A polished, responsive Next.js movie-discovery and Ethiopian cinema experience b
 - Branded AddisMovie player with a left-side next-title queue
 - Custom playback controls for licensed HLS and MP4 media
 - Authorized YouTube playback through the official IFrame Player API
-- Public-and-embeddable validation before YouTube titles are listed
+- Approved-channel synchronization through YouTube Data API or official Atom feeds
 - Automatic approved-channel upload notifications through YouTube PubSubHubbub
+- Production-safe `/api/health` diagnostics without exposing secret values
 - Live multi-search for movies, series, and people
 - Detailed title pages with cast, trailers, recommendations, and watch-provider availability
 - Responsive mobile, tablet, and desktop UI
@@ -31,13 +32,25 @@ Open `http://localhost:3000`.
 ```env
 TMDB_READ_TOKEN=your_token_here
 TMDB_REGION=ET
-YOUTUBE_API_KEY=your_youtube_data_api_v3_key
+YOUTUBE_API_KEY=your_optional_youtube_data_api_v3_key
 NEXT_PUBLIC_SITE_URL=https://your-addismovie-domain.com
 YOUTUBE_WEBHOOK_SECRET=your_long_random_webhook_secret
 YOUTUBE_SYNC_SECRET=your_long_random_subscription_secret
 ```
 
+`YOUTUBE_API_KEY` is optional. When it is missing, invalid, restricted, or unavailable, AddisMovie reads the approved publishers' official YouTube Atom feeds instead. `TMDB_READ_TOKEN` is required for the live global movie and TV catalogue; without it, the homepage uses the built-in demo catalogue.
+
 Keep `.env.local` private and never commit it.
+
+## Production health
+
+The following endpoint reports only safe configuration booleans and upstream status codes:
+
+```text
+/api/health
+```
+
+It never returns API keys, webhook secrets, synchronization secrets, or bearer tokens.
 
 ## Internal player
 
@@ -97,9 +110,8 @@ YouTube titles are listed only when they:
 
 1. Come from an approved publisher channel.
 2. Match full-film wording such as `ሙሉ ፊልም` or `Full Ethiopian Movie`.
-3. Are public.
-4. Are marked embeddable by YouTube.
-5. Run at least ten minutes.
+3. Use the official YouTube player and remain controlled by the publisher.
+4. Pass the Data API's public-and-embeddable checks when a valid API key is available.
 
 AddisMovie does not scrape protected streams, proxy video bytes, remove DRM, bypass embedding restrictions, mirror files, or re-upload publisher content.
 
