@@ -6,14 +6,15 @@ A polished, responsive Next.js movie-discovery and Ethiopian cinema experience b
 
 - Trending movies and TV series
 - Ethiopian cinema discovery shelf
-- Embedded full Ethiopian films from whitelisted official YouTube publishers
-- Privacy-enhanced YouTube playlist playback that works without an API key
-- Optional YouTube Data API v3 catalogue for fresh titles and thumbnails
+- Branded AddisMovie player with a left-side next-title queue
+- Custom playback controls for licensed HLS and MP4 media
+- Authorized YouTube playback through the official IFrame Player API
+- Public-and-embeddable validation before YouTube titles are listed
+- Automatic approved-channel upload notifications through YouTube PubSubHubbub
 - Live multi-search for movies, series, and people
 - Detailed title pages with cast, trailers, recommendations, and watch-provider availability
 - Responsive mobile, tablet, and desktop UI
-- Demo content when no TMDB token is configured
-- Server-side TMDB API integration
+- Server-side TMDB and YouTube integrations
 
 ## Local setup
 
@@ -27,26 +28,83 @@ Open `http://localhost:3000`.
 
 ## Environment variables
 
-Create `.env.local`:
-
 ```env
 TMDB_READ_TOKEN=your_token_here
 TMDB_REGION=ET
-YOUTUBE_API_KEY=your_optional_youtube_data_api_v3_key
+YOUTUBE_API_KEY=your_youtube_data_api_v3_key
+NEXT_PUBLIC_SITE_URL=https://your-addismovie-domain.com
+YOUTUBE_WEBHOOK_SECRET=your_long_random_webhook_secret
+YOUTUBE_SYNC_SECRET=your_long_random_subscription_secret
 ```
-
-`TMDB_READ_TOKEN` loads the global discovery catalogue. `YOUTUBE_API_KEY` is optional: the Ethiopian cinema playlist player works without it, while the key enables individual full-movie cards from the approved publisher list.
 
 Keep `.env.local` private and never commit it.
 
-## Ethiopian publisher integration
+## Internal player
 
-The `/ethiopian` experience uses YouTube's privacy-enhanced embed player and a fixed allowlist of established Ethiopian film channels. The internal `/api/ethiopian-movies` route reads only those channels' uploads playlists through YouTube Data API v3 and filters for full-movie titles.
+The `/ethiopian` route sends every Ethiopian catalogue item through one branded player:
 
-AddisMovie never proxies, downloads, mirrors or re-uploads the underlying videos. Playback, monetization, regional restrictions and copyright controls remain with each original publisher.
+- `youtube` and `youtube-playlist` sources use YouTube's official IFrame Player API.
+- `hls` sources use the native browser player when available and `hls.js` elsewhere.
+- `mp4` sources use the native HTML5 video element.
+
+YouTube controls can be suppressed and replaced by AddisMovie controls, but YouTube may still display required source attribution, branding, advertising, or publisher overlays. Do not cover, strip, proxy, download, or bypass those elements.
+
+## Add a licensed hosted movie
+
+Add a record to `data/licensed-movies.json` only after obtaining distribution rights:
+
+```json
+[
+  {
+    "id": "example-film",
+    "title": "Example Ethiopian Film",
+    "subtitle": "ምሳሌ ፊልም",
+    "description": "Licensed for streaming on AddisMovie.",
+    "poster": "https://cdn.example.com/example-film/poster.jpg",
+    "publishedAt": "2026-07-29",
+    "publisher": "Example Studio",
+    "sourceType": "hls",
+    "sourceUrl": "https://cdn.example.com/example-film/master.m3u8",
+    "rightsHolder": "Example Studio",
+    "rightsEvidenceUrl": "https://example.com/addismovie-license"
+  }
+]
+```
+
+Entries without HTTPS media, a rights holder, and a rights-evidence URL are rejected.
+
+## Automatic YouTube upload synchronization
+
+The approved-channel catalogue is cached with the `ethiopian-youtube` tag. YouTube upload notifications call:
+
+```text
+/api/youtube/webhook
+```
+
+After deployment, subscribe all approved channels by sending one authorized POST request:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $YOUTUBE_SYNC_SECRET" \
+  https://your-addismovie-domain.com/api/youtube/subscribe
+```
+
+The webhook validates its optional HMAC signature, ignores channels outside the allowlist, and revalidates the catalogue when an approved publisher uploads or updates a video.
+
+## Rights and ingestion rules
+
+YouTube titles are listed only when they:
+
+1. Come from an approved publisher channel.
+2. Match full-film wording such as `ሙሉ ፊልም` or `Full Ethiopian Movie`.
+3. Are public.
+4. Are marked embeddable by YouTube.
+5. Run at least ten minutes.
+
+AddisMovie does not scrape protected streams, proxy video bytes, remove DRM, bypass embedding restrictions, mirror files, or re-upload publisher content.
 
 ## Data and attribution
 
 This product uses the TMDB API for movie and television metadata. It is not endorsed or certified by TMDB.
 
-Watch-provider availability is supplied by TMDB using JustWatch data. AddisMovie does not host, upload, or distribute copyrighted video files.
+Watch-provider availability is supplied by TMDB using JustWatch data. YouTube playback remains controlled by each publisher and YouTube.
