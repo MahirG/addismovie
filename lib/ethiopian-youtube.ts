@@ -17,6 +17,7 @@ export type EthiopianVideo = {
   publishedAt: string;
   channelTitle: string;
   channelSlug: string;
+  durationSeconds: number;
 };
 
 export const ETHIOPIAN_CHANNELS: EthiopianChannel[] = [
@@ -65,6 +66,13 @@ export const ETHIOPIAN_CHANNELS: EthiopianChannel[] = [
 const FULL_MOVIE_PATTERN =
   /(?:ሙሉ\s*ፊልም|full(?:\s+length)?\s+(?:ethiopian\s+)?(?:movie|film)|ethiopian\s+full\s+(?:movie|film))/i;
 
+const CACHE_OPTIONS = {
+  revalidate: 1800,
+  tags: ["ethiopian-youtube"],
+} as const;
+
+type PlaylistCandidate = Omit<EthiopianVideo, "durationSeconds">;
+
 type PlaylistItemsResponse = {
   items?: Array<{
     snippet?: {
@@ -84,6 +92,62 @@ type PlaylistItemsResponse = {
   }>;
 };
 
+type VideosResponse = {
+  items?: Array<{
+    id?: string;
+    status?: { embeddable?: boolean; privacyStatus?: string };
+    contentDetails?: { duration?: string };
+  }>;
+};
+
+function parseIsoDuration(value?: string): number {
+  if (!value) return 0;
+  const match = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!match) return 0;
+  return Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0);
+}
+
+async function filterEmbeddableMovies(
+  candidates: PlaylistCandidate[],
+  apiKey: string,
+): Promise<EthiopianVideo[]> {
+  if (candidates.length === 0) return [];
+
+  const params = new URLSearchParams({
+    part: "status,contentDetails",
+    id: candidates.map((candidate) => candidate.videoId).join(","),
+    key: apiKey,
+  });
+
+  try {
+    const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?${params}`, {
+      headers: { Accept: "application/json" },
+      next: CACHE_OPTIONS,
+    });
+
+    if (!response.ok) return [];
+    const data = (await response.json()) as VideosResponse;
+    const statusById = new Map(
+      (data.items ?? []).map((item) => [
+        item.id ?? "",
+        {
+          embeddable: item.status?.embeddable === true,
+          public: item.status?.privacyStatus === "public",
+          durationSeconds: parseIsoDuration(item.contentDetails?.duration),
+        },
+      ]),
+    );
+
+    return candidates.flatMap((candidate) => {
+      const status = statusById.get(candidate.videoId);
+      if (!status?.embeddable || !status.public || status.durationSeconds < 600) return [];
+      return [{ ...candidate, durationSeconds: status.durationSeconds }];
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function fetchChannelMovies(
   channel: EthiopianChannel,
   apiKey: string,
@@ -100,15 +164,14 @@ async function fetchChannelMovies(
       `https://www.googleapis.com/youtube/v3/playlistItems?${params.toString()}`,
       {
         headers: { Accept: "application/json" },
-        next: { revalidate: 1800 },
+        next: CACHE_OPTIONS,
       },
     );
 
     if (!response.ok) return [];
-
     const data = (await response.json()) as PlaylistItemsResponse;
 
-    return (data.items ?? []).flatMap((item) => {
+    const candidates = (data.items ?? []).flatMap((item): PlaylistCandidate[] => {
       const snippet = item.snippet;
       const videoId = item.contentDetails?.videoId ?? snippet?.resourceId?.videoId;
       const title = snippet?.title?.trim();
@@ -134,6 +197,8 @@ async function fetchChannelMovies(
         },
       ];
     });
+
+    return filterEmbeddableMovies(candidates, apiKey);
   } catch {
     return [];
   }
@@ -145,9 +210,7 @@ export async function getOfficialEthiopianVideos(): Promise<{
 }> {
   const apiKey = process.env.YOUTUBE_API_KEY?.trim();
 
-  if (!apiKey) {
-    return { configured: false, videos: [] };
-  }
+  if (!apiKey) return { configured: false, videos: [] };
 
   const groups = await Promise.all(
     ETHIOPIAN_CHANNELS.map((channel) => fetchChannelMovies(channel, apiKey)),
@@ -156,7 +219,7 @@ export async function getOfficialEthiopianVideos(): Promise<{
   const videos = groups
     .flat()
     .sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt))
-    .slice(0, 32);
+    .slice(0, 40);
 
   return { configured: true, videos };
 }
