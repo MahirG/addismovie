@@ -9,7 +9,7 @@ export async function GET() {
 
   return NextResponse.json(
     {
-      source: "youtube-data-api-v3",
+      source: result.source,
       configured: result.configured,
       channels: ETHIOPIAN_CHANNELS,
       videos: result.videos,
