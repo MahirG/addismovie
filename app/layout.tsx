@@ -4,6 +4,7 @@ import "./globals.css";
 import "./details.css";
 import "./ethiopian-streams.css";
 import "./internal-player.css";
+import "./player-hardening.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope" });
