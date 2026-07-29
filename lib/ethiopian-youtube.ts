@@ -20,6 +20,11 @@ export type EthiopianVideo = {
   durationSeconds: number;
 };
 
+export type EthiopianVideoSyncSource =
+  | "youtube-data-api-v3"
+  | "youtube-atom-feed"
+  | "publisher-playlists";
+
 export const ETHIOPIAN_CHANNELS: EthiopianChannel[] = [
   {
     slug: "addis-movies",
@@ -64,7 +69,8 @@ export const ETHIOPIAN_CHANNELS: EthiopianChannel[] = [
 ];
 
 const FULL_MOVIE_PATTERN =
-  /(?:ሙሉ\s*ፊልም|full(?:\s+length)?\s+(?:ethiopian\s+)?(?:movie|film)|ethiopian\s+full\s+(?:movie|film))/i;
+  /(?:ሙሉ\s*ፊልም|full(?:\s+length)?\s+(?:ethiopian\s+|amharic\s+)?(?:movie|film)|(?:new\s+)?ethiopian\s+(?:full\s+)?(?:movie|film)|amharic\s+(?:full\s+)?(?:movie|film))/i;
+const NON_MOVIE_PATTERN = /\b(?:trailer|teaser|shorts?|clip|episode|music\s+video|behind\s+the\s+scenes)\b/i;
 
 const CACHE_OPTIONS: { revalidate: number; tags: string[] } = {
   revalidate: 1800,
@@ -100,11 +106,49 @@ type VideosResponse = {
   }>;
 };
 
+function isFullMovieTitle(title: string): boolean {
+  return FULL_MOVIE_PATTERN.test(title) && !NON_MOVIE_PATTERN.test(title);
+}
+
 function parseIsoDuration(value?: string): number {
   if (!value) return 0;
   const match = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
   if (!match) return 0;
   return Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0);
+}
+
+function decodeXml(value: string): string {
+  return value
+    .replace(/^<!\[CDATA\[/, "")
+    .replace(/\]\]>$/, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function xmlTag(entry: string, tagName: string): string {
+  const match = entry.match(new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}>`, "i"));
+  return match ? decodeXml(match[1]) : "";
+}
+
+function xmlAttribute(entry: string, tagName: string, attribute: string): string {
+  const match = entry.match(
+    new RegExp(`<${tagName}\\b[^>]*\\b${attribute}=["']([^"']+)["'][^>]*>`, "i"),
+  );
+  return match ? decodeXml(match[1]) : "";
+}
+
+function uniqueAndSort(videos: EthiopianVideo[]): EthiopianVideo[] {
+  const unique = new Map<string, EthiopianVideo>();
+  for (const video of videos) unique.set(video.videoId, video);
+  return [...unique.values()]
+    .sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt))
+    .slice(0, 40);
 }
 
 async function filterEmbeddableMovies(
@@ -148,7 +192,7 @@ async function filterEmbeddableMovies(
   }
 }
 
-async function fetchChannelMovies(
+async function fetchChannelMoviesFromApi(
   channel: EthiopianChannel,
   apiKey: string,
 ): Promise<EthiopianVideo[]> {
@@ -162,10 +206,7 @@ async function fetchChannelMovies(
   try {
     const response = await fetch(
       `https://www.googleapis.com/youtube/v3/playlistItems?${params.toString()}`,
-      {
-        headers: { Accept: "application/json" },
-        next: CACHE_OPTIONS,
-      },
+      { headers: { Accept: "application/json" }, next: CACHE_OPTIONS },
     );
 
     if (!response.ok) return [];
@@ -176,7 +217,7 @@ async function fetchChannelMovies(
       const videoId = item.contentDetails?.videoId ?? snippet?.resourceId?.videoId;
       const title = snippet?.title?.trim();
 
-      if (!videoId || !title || !FULL_MOVIE_PATTERN.test(title)) return [];
+      if (!videoId || !title || !isFullMovieTitle(title)) return [];
 
       const thumbnail =
         snippet?.thumbnails?.maxres?.url ??
@@ -204,22 +245,69 @@ async function fetchChannelMovies(
   }
 }
 
+async function fetchChannelMoviesFromFeed(
+  channel: EthiopianChannel,
+): Promise<EthiopianVideo[]> {
+  try {
+    const response = await fetch(
+      `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channel.channelId)}`,
+      { headers: { Accept: "application/atom+xml, application/xml;q=0.9" }, next: CACHE_OPTIONS },
+    );
+
+    if (!response.ok) return [];
+    const xml = await response.text();
+    const entries = xml.match(/<entry>[\s\S]*?<\/entry>/gi) ?? [];
+
+    return entries.flatMap((entry): EthiopianVideo[] => {
+      const videoId = xmlTag(entry, "yt:videoId");
+      const title = xmlTag(entry, "media:title") || xmlTag(entry, "title");
+      if (!videoId || !title || !isFullMovieTitle(title)) return [];
+
+      return [
+        {
+          videoId,
+          title,
+          description: xmlTag(entry, "media:description"),
+          thumbnail:
+            xmlAttribute(entry, "media:thumbnail", "url") ||
+            `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          publishedAt: xmlTag(entry, "published") || xmlTag(entry, "updated"),
+          channelTitle: xmlTag(entry, "name") || channel.name,
+          channelSlug: channel.slug,
+          durationSeconds: 0,
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function getOfficialEthiopianVideos(): Promise<{
   configured: boolean;
+  source: EthiopianVideoSyncSource;
   videos: EthiopianVideo[];
 }> {
   const apiKey = process.env.YOUTUBE_API_KEY?.trim();
 
-  if (!apiKey) return { configured: false, videos: [] };
+  if (apiKey) {
+    const apiGroups = await Promise.all(
+      ETHIOPIAN_CHANNELS.map((channel) => fetchChannelMoviesFromApi(channel, apiKey)),
+    );
+    const apiVideos = uniqueAndSort(apiGroups.flat());
+    if (apiVideos.length > 0) {
+      return { configured: true, source: "youtube-data-api-v3", videos: apiVideos };
+    }
+  }
 
-  const groups = await Promise.all(
-    ETHIOPIAN_CHANNELS.map((channel) => fetchChannelMovies(channel, apiKey)),
+  const feedGroups = await Promise.all(
+    ETHIOPIAN_CHANNELS.map((channel) => fetchChannelMoviesFromFeed(channel)),
   );
+  const feedVideos = uniqueAndSort(feedGroups.flat());
 
-  const videos = groups
-    .flat()
-    .sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt))
-    .slice(0, 40);
-
-  return { configured: true, videos };
+  return {
+    configured: feedVideos.length > 0,
+    source: feedVideos.length > 0 ? "youtube-atom-feed" : "publisher-playlists",
+    videos: feedVideos,
+  };
 }
