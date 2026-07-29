@@ -2,7 +2,7 @@
 
 import { ExternalLink, Film, Radio, ShieldCheck } from "lucide-react";
 import { useMemo } from "react";
-import { InternalVideoPlayer } from "@/components/InternalVideoPlayer";
+import { AddisMoviePlayer } from "@/components/AddisMoviePlayer";
 import type { EthiopianChannel, EthiopianVideo } from "@/lib/ethiopian-youtube";
 import type { InternalMediaItem } from "@/lib/internal-media";
 
@@ -115,7 +115,7 @@ export function EthiopianCinemaHub({
           </span>
         </div>
 
-        <InternalVideoPlayer items={items} />
+        <AddisMoviePlayer items={items} />
       </section>
 
       <section className="officialTitlesSection pageWidth">
