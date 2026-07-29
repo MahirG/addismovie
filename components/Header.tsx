@@ -22,10 +22,10 @@ export function Header() {
       <div className="headerInner">
         <Logo />
         <nav className="desktopNav" aria-label="Primary navigation">
-          <Link href="#trending">Trending</Link>
-          <Link href="#movies">Movies</Link>
-          <Link href="#series">Series</Link>
-          <Link href="#ethiopian">Ethiopian</Link>
+          <Link href="/#trending">Trending</Link>
+          <Link href="/#movies">Movies</Link>
+          <Link href="/#series">Series</Link>
+          <Link href="/ethiopian">Watch Ethiopian</Link>
         </nav>
         <div className="headerSearch"><SearchBox /></div>
         <button className="watchlistButton" aria-label="Open watchlist">
@@ -40,10 +40,10 @@ export function Header() {
         <div className="mobilePanel">
           <SearchBox />
           <nav aria-label="Mobile navigation">
-            <Link href="#trending" onClick={() => setOpen(false)}>Trending</Link>
-            <Link href="#movies" onClick={() => setOpen(false)}>Movies</Link>
-            <Link href="#series" onClick={() => setOpen(false)}>Series</Link>
-            <Link href="#ethiopian" onClick={() => setOpen(false)}>Ethiopian Stories</Link>
+            <Link href="/#trending" onClick={() => setOpen(false)}>Trending</Link>
+            <Link href="/#movies" onClick={() => setOpen(false)}>Movies</Link>
+            <Link href="/#series" onClick={() => setOpen(false)}>Series</Link>
+            <Link href="/ethiopian" onClick={() => setOpen(false)}>Watch Ethiopian</Link>
           </nav>
         </div>
       ) : null}
