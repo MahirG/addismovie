@@ -120,3 +120,5 @@ AddisMovie does not scrape protected streams, proxy video bytes, remove DRM, byp
 This product uses the TMDB API for movie and television metadata. It is not endorsed or certified by TMDB.
 
 Watch-provider availability is supplied by TMDB using JustWatch data. YouTube playback remains controlled by each publisher and YouTube.
+
+<!-- production redeploy verification: 2026-07-29 -->
