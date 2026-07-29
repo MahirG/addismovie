@@ -1,3 +1,4 @@
+import { EthiopianWatchBanner } from "@/components/EthiopianWatchBanner";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
@@ -32,6 +33,7 @@ export default async function HomePage() {
           description="A dedicated shelf for films connected to Ethiopia, its languages and its people."
           items={data.ethiopianStories}
         />
+        <EthiopianWatchBanner />
         <MediaRow
           id="movies"
           eyebrow="Big screen energy"
