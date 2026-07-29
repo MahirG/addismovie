@@ -66,10 +66,10 @@ export const ETHIOPIAN_CHANNELS: EthiopianChannel[] = [
 const FULL_MOVIE_PATTERN =
   /(?:ሙሉ\s*ፊልም|full(?:\s+length)?\s+(?:ethiopian\s+)?(?:movie|film)|ethiopian\s+full\s+(?:movie|film))/i;
 
-const CACHE_OPTIONS = {
+const CACHE_OPTIONS: { revalidate: number; tags: string[] } = {
   revalidate: 1800,
   tags: ["ethiopian-youtube"],
-} as const;
+};
 
 type PlaylistCandidate = Omit<EthiopianVideo, "durationSeconds">;
 
